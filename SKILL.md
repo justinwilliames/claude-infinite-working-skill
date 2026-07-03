@@ -30,7 +30,7 @@ Everything task-specific — phases, IDs, paths, idempotency rules, approval gat
 how to do each step — lives in the task's **state file** and its **playbook**.
 A single generic resumer serves every registered task.
 
-`{base}` = this skill's directory. Throughout, `WL={base}/scripts/worklog.sh`.
+`{base}` = this skill's directory (resolved automatically when the skill loads). Throughout, `WL={base}/scripts/worklog.sh` — the `{base}` placeholder resolves to the skill's absolute path, so `WL` always points to the correct worklog.sh regardless of where the skill is installed.
 
 ## When to use it
 
@@ -81,8 +81,9 @@ schedule a one-shot `fireAt` a few minutes after it.
    This is what keeps the skill agnostic: a cold resumer reads the playbook, not
    the skill, to learn the task.
 4. **Configure** knobs (defaults shown):
-   - `heartbeat_stale_seconds=1200` — stale window before takeover (raise above
-     your longest expected turn; e.g. 1500).
+   - `heartbeat_stale_seconds=1500` — stale window before takeover. Must exceed
+     your ScheduleWakeup interval + longest expected turn time; 1200 is a tight
+     race against the default wakeup cadence, so default to 1500 or higher.
    - `max_iterations=1000`, `max_consecutive_failures=4` — runaway guards.
    - `checkpoint_every_seconds=0` + `checkpoint_action="..."` — periodic save.
 5. **Declare phases:** `bash $WL phase-set <file> <id> <status> "[note]"`.
@@ -142,7 +143,8 @@ WL=/Users/<you>/.claude/skills/infinite-working-skill/scripts/worklog.sh
 7. **Done?** All phases done → `set-status done`, `unregister`, PushNotification,
    stop. (Leave the shared resumer in place for other tasks.)
 8. Else `next <file> "<next unit>"` and, as the **last action of the turn**, call
-   `ScheduleWakeup` (1200–1800s idle; shorter only while actively churning).
+   `ScheduleWakeup` (**60–120s while actively churning** to stay within the
+   prompt-cache window; **1200–1800s when idle** or waiting on an external event).
 
 ## Safety rails (non-negotiable for "infinite")
 
@@ -190,3 +192,7 @@ WL=/Users/<you>/.claude/skills/infinite-working-skill/scripts/worklog.sh
 On `done`: `unregister` the task. Delete the shared resumer ONLY when no tasks remain
 registered (disable via `update_scheduled_task` or remove its task directory).
 TaskStop any Monitor; omit ScheduleWakeup. State file + playbook remain as the record.
+
+## Sync homes
+
+Canonical: ~/.claude/skills/infinite-working-skill (private, live). Public sanitized twin: ~/code/claude-skills/infinite-working-skill → github.com/justinwilliames/claude-skills. Sanitization is a sync step — never push private paths/names.

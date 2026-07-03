@@ -35,7 +35,7 @@ case "$WL_CMD" in
       --argjson now "$(now_epoch)" --arg iso "$(now_iso)" '{
       task_id:$id, title:$t, status:"working", blocked_reason:null,
       created_at:$iso, last_heartbeat_epoch:$now, last_heartbeat:$iso,
-      heartbeat_stale_seconds:1200, iteration:0,
+      heartbeat_stale_seconds:1500, iteration:0,
       max_iterations:1000, consecutive_failures:0, max_consecutive_failures:4,
       checkpoint_every_seconds:0, checkpoint_action:null, last_checkpoint_epoch:$now,
       resumer_task_id:null, playbook_path:null, next_action:"", phases:[], ledger:[], notes:[]
@@ -47,8 +47,8 @@ case "$WL_CMD" in
     f="${1:?file}"
     _write "$f" '.last_heartbeat_epoch=$now | .last_heartbeat=$iso | .iteration += 1' \
       --argjson now "$(now_epoch)" --arg iso "$(now_iso)"
-    it="$(jq -r '.iteration' "$f")"; mx="$(jq -r '.max_iterations' "$f")"
-    echo "HEARTBEAT iter=$it/$mx at $(jq -r '.last_heartbeat' "$f")"
+    read -r it mx hb < <(jq -r '[.iteration, .max_iterations, .last_heartbeat] | @tsv' "$f")
+    echo "HEARTBEAT iter=$it/$mx at $hb"
     if [ "$it" -ge "$mx" ]; then echo "TRIP: max_iterations reached"; fi
     ;;
 
@@ -87,7 +87,7 @@ case "$WL_CMD" in
     f="${1:?file}"; note="${2:-}"
     _write "$f" '.consecutive_failures += 1 | .notes += [$iso+" FAIL: "+$n]' \
       --arg n "$note" --arg iso "$(now_iso)"
-    cf="$(jq -r '.consecutive_failures' "$f")"; mx="$(jq -r '.max_consecutive_failures' "$f")"
+    read -r cf mx < <(jq -r '[.consecutive_failures, .max_consecutive_failures] | @tsv' "$f")
     echo "FAIL $cf/$mx${note:+ — $note}"
     if [ "$cf" -ge "$mx" ]; then echo "TRIP: max_consecutive_failures reached"; fi
     ;;
@@ -111,14 +111,17 @@ case "$WL_CMD" in
   config) # config <file> key=value ...   numeric values stay numeric
     f="${1:?file}"; shift
     [ -f "$f" ] || die "no state file: $f"
+    filter="."; args=()
+    i=0
     for kv in "$@"; do
-      k="${kv%%=*}"; v="${kv#*=}"
+      k="${kv%%=*}"; v="${kv#*=}"; i=$((i+1))
       if [[ "$v" =~ ^-?[0-9]+$ ]]; then
-        _write "$f" '.[$k]=$v' --arg k "$k" --argjson v "$v"
+        filter+=" | .[\$k${i}]=\$v${i}"; args+=(--arg "k${i}" "$k" --argjson "v${i}" "$v")
       else
-        _write "$f" '.[$k]=$v' --arg k "$k" --arg v "$v"
+        filter+=" | .[\$k${i}]=\$v${i}"; args+=(--arg "k${i}" "$k" --arg "v${i}" "$v")
       fi
     done
+    _write "$f" "$filter" "${args[@]}"
     echo "CONFIG updated: $*"
     ;;
 
