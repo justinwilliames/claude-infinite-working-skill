@@ -1,3 +1,5 @@
+> **⚠️ Moved (2026-07-03):** now maintained in github.com/justinwilliames/claude-skills (infinite-working-skill/) — this repo is archived.
+
 # claude-infinite-working-skill
 
 A [Claude Code](https://claude.com/claude-code) skill that drives any long-running,
